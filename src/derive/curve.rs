@@ -51,8 +51,8 @@ macro_rules! endo {
 
 // These masks work for 0, 1, and 2 spare bits.
 // The only curve that does not fit these masks is Bls12-381.
-pub(crate) const NEG_Y_MASK: u8 = 0b1000_0000;
-pub(crate) const NEG_Y_SHIFT: u8 = 7;
+pub(crate) const SIGN_MASK: u8 = 0b1000_0000;
+pub(crate) const SIGN_SHIFT: u8 = 7;
 pub(crate) const IS_IDENTITY_MASK: u8 = 0b0100_0000;
 pub(crate) const IS_IDENTITY_SHIFT: u8 = 6;
 
@@ -75,7 +75,7 @@ macro_rules! new_curve_impl {
             () => {
                 paste::paste! {
 
-                // The copressed size is the size of the x-coordinate (one base field element)
+                // The compressed size is the size of the x-coordinate (one base field element)
                 // when there is at least 1 spare bit. When there is no spare bits (secp256k1)
                 // the size is increased by 1 byte.
                 #[allow(non_upper_case_globals)]
@@ -161,7 +161,7 @@ macro_rules! new_curve_impl {
                         } else {
                             Choice::from((tmp[[< $name _FLAG_BYTE_INDEX>]] & IS_IDENTITY_MASK) >> IS_IDENTITY_SHIFT )
                         };
-                        let ysign = Choice::from( (tmp[[< $name _FLAG_BYTE_INDEX>]]  & NEG_Y_MASK) >> NEG_Y_SHIFT );
+                        let ysign = Choice::from( (tmp[[< $name _FLAG_BYTE_INDEX>]]  & SIGN_MASK) >> SIGN_SHIFT );
                         // Clear flag bits
                         tmp[[< $name _FLAG_BYTE_INDEX>]] &= [< $name _FLAG_BITS >];
 
@@ -209,7 +209,7 @@ macro_rules! new_curve_impl {
                             let mut xbytes = [0u8; [< $name _COMPRESSED_SIZE >]];
                             xbytes[..$base::size()].copy_from_slice(&x.to_bytes());
                             if (y.to_bytes()[0] & 1) == 1 {
-                                xbytes[[< $name _FLAG_BYTE_INDEX>]] |= NEG_Y_MASK;
+                                xbytes[[< $name _FLAG_BYTE_INDEX>]] |= SIGN_MASK;
                             }
                             [< $name Compressed >](xbytes)
                         }
@@ -224,10 +224,6 @@ macro_rules! new_curve_impl {
         macro_rules! impl_uncompressed {
             () => {
                 paste::paste! {
-
-                #[allow(non_upper_case_globals)]
-                const [< $name _FLAT_BYTE_INDEX >]: usize =
-                    2 *$base::size() - 1;
 
                 #[derive(Copy, Clone)]
                 pub struct [< $name Uncompressed >]([u8; 2*$base::size()]);
@@ -279,12 +275,12 @@ macro_rules! new_curve_impl {
 
                         fn from_uncompressed_unchecked(bytes: &Self::Uncompressed) -> CtOption<Self> {
                             let bytes = &bytes.0;
-                            let infinity_flag_set = if $spare_bits == 1 {
-                                // With 1 spare bit there is no infinity flag, so we just rely
+                            let infinity_flag_set = if $spare_bits == 2 {
+                                Choice::from((( bytes[ 2* $base::size() -1] & IS_IDENTITY_MASK) >> IS_IDENTITY_SHIFT) )
+                            } else {
+                                // With 0 and 1 spare bit there is no infinity flag, so we just rely
                                 // on the x, y coordinates to be set to 0.
                                 Choice::from(1u8)
-                            } else {
-                                Choice::from((( bytes[[<$name _FLAT_BYTE_INDEX >]] & IS_IDENTITY_MASK) >> IS_IDENTITY_SHIFT) )
                             };
 
                             let x = {
@@ -331,8 +327,8 @@ macro_rules! new_curve_impl {
                             res[$base::size().. 2*$base::size()].copy_from_slice(
                                 &$base::conditional_select(&self.y, &$base::zero(), self.is_identity()).to_bytes()[..],
                             );
-                            if $spare_bits == 0 || $spare_bits == 2  {
-                                res[[< $name _FLAG_BYTE_INDEX >]] |= u8::conditional_select(&0u8, &IS_IDENTITY_MASK, self.is_identity());
+                            if  $spare_bits == 2  {
+                                res[ 2*$base::size() -1 ] |= u8::conditional_select(&0u8, &IS_IDENTITY_MASK, self.is_identity());
                             }
 
                             [< $name Uncompressed >](res)
