@@ -155,13 +155,14 @@ macro_rules! new_curve_impl {
 
                     fn from_bytes(bytes: &Self::Repr) -> CtOption<Self> {
                         let mut tmp = bytes.0;
-                        // When only 1 spare bit, there is no identity flag
+                        // When only 1 spare bit, there is no identity flag.
                         let is_inf  = if $spare_bits == 1  {
                             Choice::from(1u8)
                         } else {
                             Choice::from((tmp[[< $name _FLAG_BYTE_INDEX>]] & IS_IDENTITY_MASK) >> IS_IDENTITY_SHIFT )
                         };
                         let ysign = Choice::from( (tmp[[< $name _FLAG_BYTE_INDEX>]]  & SIGN_MASK) >> SIGN_SHIFT );
+
                         // Clear flag bits
                         tmp[[< $name _FLAG_BYTE_INDEX>]] &= [< $name _FLAG_BITS >];
 
@@ -275,14 +276,17 @@ macro_rules! new_curve_impl {
 
                         fn from_uncompressed_unchecked(bytes: &Self::Uncompressed) -> CtOption<Self> {
                             let bytes = &bytes.0;
+
+                            //
                             let infinity_flag_set = if $spare_bits == 2 {
-                                Choice::from((( bytes[ 2* $base::size() -1] & IS_IDENTITY_MASK) >> IS_IDENTITY_SHIFT) )
+                                Choice::from( ( ( bytes[ 2* $base::size() -1] & IS_IDENTITY_MASK) >> IS_IDENTITY_SHIFT) )
                             } else {
                                 // With 0 and 1 spare bit there is no infinity flag, so we just rely
                                 // on the x, y coordinates to be set to 0.
                                 Choice::from(1u8)
                             };
 
+                            // Get x, y coordinates.
                             let x = {
                                 let mut tmp = [0; $base::size()];
                                 tmp.copy_from_slice(&bytes[0..$base::size()]);
@@ -292,6 +296,10 @@ macro_rules! new_curve_impl {
                             let y = {
                                 let mut tmp = [0; $base::size()];
                                 tmp.copy_from_slice(&bytes[$base::size()..2*$base::size()]);
+                                // Clear flags
+                                if $spare_bits == 2 {
+                                    tmp[$base::size() -1] &= [< $name _FLAG_BITS >];
+                                }
                                 $base::from_bytes(&tmp)
                             };
 
@@ -310,9 +318,10 @@ macro_rules! new_curve_impl {
                                         is_ident,
                                     );
 
+
                                     CtOption::new(
                                         p,
-                                        is_ident,
+                                        Choice::from(1u8),
                                     )
                                 })
                             })
