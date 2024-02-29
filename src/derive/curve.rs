@@ -275,11 +275,14 @@ macro_rules! new_curve_impl {
                         }
 
                         fn from_uncompressed_unchecked(bytes: &Self::Uncompressed) -> CtOption<Self> {
-                            let bytes = &bytes.0;
+                            let mut bytes = bytes.0;
 
-                            //
-                            let infinity_flag_set = if $spare_bits == 2 {
-                                Choice::from( ( ( bytes[ 2* $base::size() -1] & IS_IDENTITY_MASK) >> IS_IDENTITY_SHIFT) )
+                            let infinity_flag= if $spare_bits == 2 {
+                                let flag_idx = 2* $base::size() -1;
+                                let infinity_flag = Choice::from( ( ( bytes[ flag_idx ] & IS_IDENTITY_MASK) >> IS_IDENTITY_SHIFT) );
+                                // Clear flags
+                                bytes[flag_idx] &= [< $name _FLAG_BITS >];
+                                infinity_flag
                             } else {
                                 // With 0 and 1 spare bit there is no infinity flag, so we just rely
                                 // on the x, y coordinates to be set to 0.
@@ -287,27 +290,22 @@ macro_rules! new_curve_impl {
                             };
 
                             // Get x, y coordinates.
+                            let mut repr = [0u8; $base::size()];
                             let x = {
-                                let mut tmp = [0; $base::size()];
-                                tmp.copy_from_slice(&bytes[0..$base::size()]);
-                                $base::from_bytes(&tmp)
+                                repr.copy_from_slice(&bytes[0..$base::size()]);
+                                $base::from_bytes(&repr)
                             };
 
                             let y = {
-                                let mut tmp = [0; $base::size()];
-                                tmp.copy_from_slice(&bytes[$base::size()..2*$base::size()]);
-                                // Clear flags
-                                if $spare_bits == 2 {
-                                    tmp[$base::size() -1] &= [< $name _FLAG_BITS >];
-                                }
-                                $base::from_bytes(&tmp)
+                                repr.copy_from_slice(&bytes[$base::size()..2*$base::size()]);
+                                $base::from_bytes(&repr)
                             };
 
                             x.and_then(|x| {
                                 y.and_then(|y| {
                                     // The point is the identity iff the x and y coordinates are zero
                                     // and the identity flag is set, in the fomrats where such flag is present.
-                                    let is_ident = infinity_flag_set & x.is_zero() & y.is_zero();
+                                    let is_ident = infinity_flag & x.is_zero() & y.is_zero();
 
                                     let p = $name_affine::conditional_select(
                                         &$name_affine{
@@ -321,6 +319,7 @@ macro_rules! new_curve_impl {
 
                                     CtOption::new(
                                         p,
+                                        // Unchecked version assumes the result is valid.
                                         Choice::from(1u8),
                                     )
                                 })
