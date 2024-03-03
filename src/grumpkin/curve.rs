@@ -30,7 +30,6 @@ new_curve_impl!(
     (pub),
     G1,
     G1Affine,
-    2,
     Fq,
     Fr,
     (G1_GENERATOR_X, G1_GENERATOR_Y),

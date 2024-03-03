@@ -70,7 +70,6 @@ new_curve_impl!(
     (pub),
     Secp256r1,
     Secp256r1Affine,
-    0,
     Fp,
     Fq,
     (SECP_GENERATOR_X,SECP_GENERATOR_Y),

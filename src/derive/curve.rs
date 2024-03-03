@@ -61,7 +61,6 @@ macro_rules! new_curve_impl {
     (($($privacy:tt)*),
     $name:ident,
     $name_affine:ident,
-    $spare_bits:expr,
     $base:ident,
     $scalar:ident,
     $generator:expr,
@@ -72,7 +71,7 @@ macro_rules! new_curve_impl {
     ) => {
 
         macro_rules! impl_compressed {
-            () => {
+            ($spare_bits: expr) => {
                 paste::paste! {
 
                 // The compressed size is the size of the x-coordinate (one base field element)
@@ -216,7 +215,7 @@ macro_rules! new_curve_impl {
                     fn to_bytes(&self) -> Self::Repr {
                         if bool::from(self.is_identity()) {
                             let mut bytes = [0; [< $name _COMPRESSED_SIZE >]];
-                            if $spare_bits == 0 || $spare_bits ==2 {
+                            if $spare_bits == 0 || $spare_bits == 2 {
                                 bytes[[< $name _FLAG_BYTE_INDEX>]] |= IS_IDENTITY_MASK;
                             }
                             [< $name Compressed >](bytes)
@@ -238,7 +237,7 @@ macro_rules! new_curve_impl {
         }
 
         macro_rules! impl_uncompressed {
-            () => {
+            ($spare_bits: expr) => {
                 paste::paste! {
 
                 #[derive(Copy, Clone)]
@@ -451,8 +450,10 @@ macro_rules! new_curve_impl {
         #[cfg(feature = "derive_serde")]
         serialize_deserialize_to_from_bytes!();
 
-        impl_compressed!();
-        impl_uncompressed!();
+        // Base's num_bits is the number of bits for the base prime field,
+        // so the computation of spare bits is correct for extensions as well.
+        impl_compressed!((($base::NUM_BITS-1) / 8 +1) * 8 - $base::NUM_BITS);
+        impl_uncompressed!((($base::NUM_BITS-1) / 8 +1) * 8 - $base::NUM_BITS);
 
 
 

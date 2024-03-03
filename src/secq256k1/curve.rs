@@ -42,7 +42,6 @@ new_curve_impl!(
     (pub),
     Secq256k1,
     Secq256k1Affine,
-    0,
     Fq,
     Fp,
     (SECQ_GENERATOR_X, SECQ_GENERATOR_Y),
