@@ -49,10 +49,10 @@ macro_rules! endo {
     };
 }
 
-// These masks work for 0, 1, and 2 spare bits.
-// The only curve that does not fit these masks is Bls12-381.
+// Sign mask for 0, 1 and 2 spare bits.
 pub(crate) const SIGN_MASK: u8 = 0b1000_0000;
 pub(crate) const SIGN_SHIFT: u8 = 7;
+// Identity mask for 0 and 2 spare bits (1 spare bit does not use it).
 pub(crate) const IS_IDENTITY_MASK: u8 = 0b0100_0000;
 pub(crate) const IS_IDENTITY_SHIFT: u8 = 6;
 
@@ -155,37 +155,53 @@ macro_rules! new_curve_impl {
 
                     fn from_bytes(bytes: &Self::Repr) -> CtOption<Self> {
                         let mut tmp = bytes.0;
-                        // When only 1 spare bit, there is no identity flag.
-                        let is_inf  = if $spare_bits == 1  {
-                            Choice::from(1u8)
-                        } else {
+
+                        // Get identity and sign flags.
+                        let identity_flag = if $spare_bits == 0  || $spare_bits == 2 {
                             Choice::from((tmp[[< $name _FLAG_BYTE_INDEX>]] & IS_IDENTITY_MASK) >> IS_IDENTITY_SHIFT )
+                        } else {
+                            Choice::from(0u8)
                         };
-                        let ysign = Choice::from( (tmp[[< $name _FLAG_BYTE_INDEX>]]  & SIGN_MASK) >> SIGN_SHIFT );
+
+                        let sign_flag = Choice::from( (tmp[[< $name _FLAG_BYTE_INDEX>]]  & SIGN_MASK) >> SIGN_SHIFT );
 
                         // Clear flag bits
                         tmp[[< $name _FLAG_BYTE_INDEX>]] &= [< $name _FLAG_BITS >];
 
+                        // Get x-coordinate
                         let mut xbytes = [0u8; $base::size()];
                         xbytes.copy_from_slice(&tmp[..$base::size()]);
 
+
+
                         $base::from_bytes(&xbytes).and_then(|x| {
+
+                            // Check encoding validity: If the identity flag is set, then the x-coord must be 0.
+                            let (is_valid, is_identity) =
+                            if $spare_bits   == 0  || $spare_bits == 2 {
+                                (!(x.is_zero() ^ identity_flag), identity_flag)
+                            } else {
+                                // With 1 spare bit, the encoding is always valid, and the identity is encoded with a 0 x-coordiante.
+                                (Choice::from(1u8), x.is_zero())
+                            };
+
+
                             CtOption::new(
                                 Self::identity(),
-                                x.is_zero() & (is_inf))
+                                is_identity)
                             .or_else(|| {
-                                //Computes corresponding y
+                                // Computes corresponding y coordinate.
                                 $name_affine::y2(x).sqrt().and_then(|y| {
                                     // Get sign of obtained solution. sign = y % 2.
                                     let sign = Choice::from(y.to_bytes()[0] & 1);
                                     // Adjust sign if necessary.
-                                    let y = $base::conditional_select(&y, &-y, ysign ^ sign);
+                                    let y = $base::conditional_select(&y, &-y, sign_flag ^ sign);
                                     CtOption::new(
                                         $name_affine {
                                             x,
                                             y,
                                         },
-                                        Choice::from(1u8),
+                                        is_valid,
                                     )
                                 })
                             })
@@ -200,7 +216,6 @@ macro_rules! new_curve_impl {
                     fn to_bytes(&self) -> Self::Repr {
                         if bool::from(self.is_identity()) {
                             let mut bytes = [0; [< $name _COMPRESSED_SIZE >]];
-                            // When spare_bits == 1, the identity is all 0's.
                             if $spare_bits == 0 || $spare_bits ==2 {
                                 bytes[[< $name _FLAG_BYTE_INDEX>]] |= IS_IDENTITY_MASK;
                             }
@@ -277,16 +292,18 @@ macro_rules! new_curve_impl {
                         fn from_uncompressed_unchecked(bytes: &Self::Uncompressed) -> CtOption<Self> {
                             let mut bytes = bytes.0;
 
-                            let infinity_flag= if $spare_bits == 2 {
+                            // Get identity flag.
+                            let identity_flag= if $spare_bits == 2 {
                                 let flag_idx = 2* $base::size() -1;
-                                let infinity_flag = Choice::from( ( ( bytes[ flag_idx ] & IS_IDENTITY_MASK) >> IS_IDENTITY_SHIFT) );
-                                // Clear flags
+                                let identity_flag = Choice::from( ( ( bytes[ flag_idx ] & IS_IDENTITY_MASK) >> IS_IDENTITY_SHIFT) );
+
+                                // Clear flags.
                                 bytes[flag_idx] &= [< $name _FLAG_BITS >];
-                                infinity_flag
+                                identity_flag
                             } else {
-                                // With 0 and 1 spare bit there is no infinity flag, so we just rely
+                                // With 0 and 1 spare bit there is no identity flag, so we just rely
                                 // on the x, y coordinates to be set to 0.
-                                Choice::from(1u8)
+                                Choice::from(0u8)
                             };
 
                             // Get x, y coordinates.
@@ -301,11 +318,19 @@ macro_rules! new_curve_impl {
                                 $base::from_bytes(&repr)
                             };
 
+
                             x.and_then(|x| {
                                 y.and_then(|y| {
-                                    // The point is the identity iff the x and y coordinates are zero
-                                    // and the identity flag is set, in the fomrats where such flag is present.
-                                    let is_ident = infinity_flag & x.is_zero() & y.is_zero();
+                                    let zero_coords = x.is_zero() & y.is_zero();
+
+                                    // Check encoding validity: If the identity flag is set, then the x,y coordinates must be 0.
+                                    let (is_valid, is_identity) = if $spare_bits == 2 {
+                                        (!( zero_coords ^ identity_flag), identity_flag)
+                                    } else {
+                                        // With 1 spare bit, the encoding is always valid, and the identity is encoded with a 0 x-coordiante.
+                                        (Choice::from(1u8), zero_coords)
+                                    };
+
 
                                     let p = $name_affine::conditional_select(
                                         &$name_affine{
@@ -313,14 +338,13 @@ macro_rules! new_curve_impl {
                                             y,
                                         },
                                         &$name_affine::identity(),
-                                        is_ident,
+                                        is_identity,
                                     );
 
 
                                     CtOption::new(
                                         p,
-                                        // Unchecked version assumes the result is valid.
-                                        Choice::from(1u8),
+                                        Choice::from(is_valid),
                                     )
                                 })
                             })
