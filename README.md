@@ -2,7 +2,7 @@
 
 [![crates.io version](https://img.shields.io/crates/v/halo2curves.svg)](https://crates.io/crates/halo2curves)
 [![docs.rs availability](https://img.shields.io/docsrs/halo2curves?label=docs.rs)](https://docs.rs/halo2curves)
-[![Build status](https://img.shields.io/github/actions/workflow/status/privacy-scaling-explorations/halo2curves/ci.yml?branch=main)](https://github.com/privacy-scaling-explorations/halo2curves/actions)
+[![Build status](https://img.shields.io/github/actions/workflow/status/AronisAt79/halo2curvescurves/ci.yml?branch=main)](https://github.com/AronisAt79/halo2curvescurves/actions)
 
 This library provides efficient and flexible implementations of various halo2-friendly elliptic curves, originally implementing the BN256 curve with traits from the `zkcrypto` ecosystem,
 
